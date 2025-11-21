@@ -1,7 +1,9 @@
+
 export enum GamePhase {
   MENU = 'MENU',
   PLAYING = 'PLAYING',
   WAVE_COMPLETE = 'WAVE_COMPLETE', // Choosing upgrade
+  STAGE_COMPLETE = 'STAGE_COMPLETE', // New Map Transition
   GAME_OVER = 'GAME_OVER'
 }
 
@@ -37,7 +39,8 @@ export interface Enemy extends Entity {
   pathIndex: number; // Current segment of path
   distance: number; // Distance traveled along current segment
   frozen: number; // Freeze ticks remaining
-  type: 'BASIC' | 'FAST' | 'TANK' | 'BOSS';
+  type: 'BASIC' | 'FAST' | 'TANK' | 'SWARM' | 'BOSS';
+  visualOffset: number; // For animation wobble
 }
 
 export interface Tower extends Entity {
@@ -47,6 +50,7 @@ export interface Tower extends Entity {
   cooldown: number;
   lastShot: number;
   level: number;
+  totalInvested: number; // For sell calculation
 }
 
 export interface Projectile extends Entity {
@@ -67,12 +71,19 @@ export interface Particle extends Entity {
   size: number;
 }
 
+export interface Point {
+  x: number;
+  y: number;
+}
+
 export interface GameState {
   money: number;
   lives: number;
   wave: number;
+  stage: number; // Current Map Level
   score: number;
   grid: (Tower | null)[][];
+  path: Point[]; // Dynamic path for current stage
   enemies: Enemy[];
   projectiles: Projectile[];
   particles: Particle[];
@@ -83,10 +94,5 @@ export interface UpgradeCard {
   title: string;
   description: string;
   rarity: 'COMMON' | 'RARE' | 'LEGENDARY';
-  apply: (state: GameState) => void; // In a real app, use IDs to avoid serializing functions, but fine here
-}
-
-export interface Point {
-  x: number;
-  y: number;
+  apply: (state: GameState) => void;
 }
