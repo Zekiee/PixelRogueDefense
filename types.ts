@@ -32,6 +32,17 @@ export interface Entity {
   y: number;
 }
 
+export interface FloatingText {
+  id: string;
+  x: number;
+  y: number;
+  text: string;
+  color: string;
+  life: number; // frames
+  vy: number;
+  size: number;
+}
+
 export interface Enemy extends Entity {
   hp: number;
   maxHp: number;
@@ -39,6 +50,7 @@ export interface Enemy extends Entity {
   pathIndex: number; // Current segment of path
   distance: number; // Distance traveled along current segment
   frozen: number; // Freeze ticks remaining
+  hitFlash: number; // Frames to flash white
   type: 'BASIC' | 'FAST' | 'TANK' | 'SWARM' | 'BOSS';
   visualOffset: number; // For animation wobble
 }
@@ -87,6 +99,8 @@ export interface GameState {
   enemies: Enemy[];
   projectiles: Projectile[];
   particles: Particle[];
+  floatingTexts: FloatingText[];
+  screenShake: number;
 }
 
 export interface UpgradeCard {

@@ -29,7 +29,6 @@ export const GameUI: React.FC<Props> = ({
   flavorText
 }) => {
   
-  // Calculate upgrade info if a tower is selected
   const getUpgradeInfo = () => {
     if (!selectedPlacedTower) return null;
     const stats = TOWER_STATS[selectedPlacedTower.type];
@@ -64,7 +63,6 @@ export const GameUI: React.FC<Props> = ({
       {/* 底部控制区域 */}
       <div className="pointer-events-auto flex flex-col items-center w-full gap-2">
         
-        {/* 阶段动作按钮 */}
         {phase === GamePhase.MENU && (
              <button 
              onClick={onNextWave}
@@ -83,11 +81,10 @@ export const GameUI: React.FC<Props> = ({
            </button>
         )}
 
-        {/* 操作面板：建造 或 升级/出售 */}
         <div className="w-full max-w-3xl bg-gray-900/90 border-t-2 border-gray-600 p-2 md:p-3 rounded-t-xl flex flex-col md:flex-row items-center justify-between gap-4 transition-all">
           
           {selectedPlacedTower && upgradeInfo ? (
-            // --- 选中已建造的塔：显示升级/出售界面 ---
+            // --- 升级/出售界面 ---
             <div className="flex w-full justify-between items-center animate-slideUp">
               <div className="text-white flex flex-col">
                 <span className="font-bold text-yellow-400">{upgradeInfo.name} (Lv.{selectedPlacedTower.level})</span>
@@ -116,7 +113,7 @@ export const GameUI: React.FC<Props> = ({
                 </button>
                 
                 <button 
-                  onClick={() => onSelectTowerType(null)} // Cancel selection
+                  onClick={() => onSelectTowerType(null)} 
                   className="px-4 py-2 bg-gray-700 text-white rounded border border-gray-500 text-xs"
                 >
                   取消
@@ -124,7 +121,7 @@ export const GameUI: React.FC<Props> = ({
               </div>
             </div>
           ) : (
-            // --- 未选中塔：显示建造栏 ---
+            // --- 建造栏 ---
             <div className="flex gap-2 overflow-x-auto w-full justify-center">
               {(Object.keys(TOWER_STATS) as TowerType[]).map((type) => {
                 const stats = TOWER_STATS[type];

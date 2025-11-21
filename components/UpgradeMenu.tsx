@@ -1,12 +1,16 @@
+
 import React from 'react';
 import { UpgradeCard } from '../types';
+import { REROLL_COST } from '../constants';
 
 interface Props {
   options: UpgradeCard[];
+  money: number;
   onSelect: (card: UpgradeCard) => void;
+  onReroll: () => void;
 }
 
-export const UpgradeMenu: React.FC<Props> = ({ options, onSelect }) => {
+export const UpgradeMenu: React.FC<Props> = ({ options, money, onSelect, onReroll }) => {
   const getRarityColor = (rarity: string) => {
     switch (rarity) {
       case 'COMMON': return 'border-gray-400 text-gray-100';
@@ -18,16 +22,19 @@ export const UpgradeMenu: React.FC<Props> = ({ options, onSelect }) => {
 
   return (
     <div className="absolute inset-0 bg-black/90 flex flex-col items-center justify-center z-20 animate-fadeIn p-2 md:p-4">
-      <h2 className="text-xl md:text-3xl text-white mb-2 md:mb-8 text-center" style={{ textShadow: '2px 2px 0 #000' }}>
-        关卡清除
-      </h2>
-      <p className="text-gray-400 mb-2 md:mb-8 text-xs">选择一件神器</p>
+      <div className="flex items-center justify-between w-full max-w-4xl mb-4 px-4">
+         <div className="text-left">
+            <h2 className="text-xl md:text-3xl text-white" style={{ textShadow: '2px 2px 0 #000' }}>
+              关卡清除
+            </h2>
+            <p className="text-gray-400 text-xs">选择一件神器</p>
+         </div>
+         <div className="text-yellow-400 font-bold text-lg flex items-center gap-2">
+            <span>持有金币: ${Math.floor(money)}</span>
+         </div>
+      </div>
       
-      {/* 
-         使用 flex-row 或 grid-cols-3 强制横向排列，适应手机横屏。
-         减小 gap 和 padding 确保放得下。
-      */}
-      <div className="grid grid-cols-3 gap-2 md:gap-4 w-full max-w-4xl h-full max-h-[60vh] md:max-h-none">
+      <div className="grid grid-cols-3 gap-2 md:gap-4 w-full max-w-4xl h-full max-h-[60vh] md:max-h-none mb-4">
         {options.map((card) => (
           <button
             key={card.id}
@@ -51,6 +58,20 @@ export const UpgradeMenu: React.FC<Props> = ({ options, onSelect }) => {
           </button>
         ))}
       </div>
+
+      <button
+        onClick={onReroll}
+        disabled={money < REROLL_COST}
+        className={`
+            px-8 py-3 rounded border-2 font-bold transition-all flex items-center gap-2
+            ${money >= REROLL_COST 
+              ? 'bg-indigo-600 border-indigo-400 hover:bg-indigo-500 text-white' 
+              : 'bg-gray-800 border-gray-600 text-gray-500 cursor-not-allowed'}
+        `}
+      >
+        <span>🎲 刷新重置</span>
+        <span className={money >= REROLL_COST ? "text-yellow-300" : "text-gray-500"}>-${REROLL_COST}</span>
+      </button>
     </div>
   );
 };

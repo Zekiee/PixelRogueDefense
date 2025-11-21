@@ -6,6 +6,7 @@ export const GRID_H = 9;
 export const CELL_SIZE = 64;
 export const FPS = 60;
 export const SELL_RATIO = 0.7; // Sell returns 70% of value
+export const REROLL_COST = 50; // Cost to refresh upgrades
 export const UPGRADE_COST_MULTIPLIER = 1.5; // Cost increases by 50% each level
 export const UPGRADE_STAT_MULTIPLIER = 1.25; // Stats increase by 25% each level
 export const WAVES_PER_STAGE = 5; // New map every 5 waves
@@ -60,6 +61,11 @@ export const ROGUE_UPGRADES: Omit<UpgradeCard, 'apply'>[] = [
   { id: 'sniper_buff', title: '弱点看破', description: '狙击手造成双倍伤害', rarity: 'LEGENDARY' },
   { id: 'splash_buff', title: '高爆炸药', description: '迫击炮爆炸范围扩大 50%', rarity: 'RARE' },
   { id: 'base_hp', title: '城墙修补', description: '恢复 5 点生命值', rarity: 'COMMON' },
+  // Phase 2 New Artifacts
+  { id: 'execute', title: '处决之刃', description: '立即斩杀生命值低于 15% 的敌人', rarity: 'LEGENDARY' },
+  { id: 'greed', title: '贪婪之手', description: '攻击时有 5% 概率获得 2 金币', rarity: 'RARE' },
+  { id: 'crit', title: '致命节奏', description: '所有攻击获得 15% 暴击率 (150% 伤害)', rarity: 'RARE' },
+  { id: 'explode', title: '尸体爆炸', description: '敌人死亡时对周围造成 20 点范围伤害', rarity: 'LEGENDARY' },
 ];
 
 export const INITIAL_STATE = {
