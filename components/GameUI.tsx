@@ -21,13 +21,13 @@ export const GameUI: React.FC<Props> = ({
 }) => {
   return (
     <div className="absolute inset-0 pointer-events-none flex flex-col justify-between p-2 md:p-4">
-      {/* Top Bar */}
+      {/* 顶部信息栏 */}
       <div className="flex justify-between items-start pointer-events-auto">
         <div className="flex gap-4 text-white text-xs md:text-sm bg-black/50 p-2 rounded border border-white/20 backdrop-blur-sm">
           <div className="text-red-400">♥ {gameState.lives}</div>
           <div className="text-yellow-400">$ {Math.floor(gameState.money)}</div>
-          <div className="text-blue-400">Wave {gameState.wave}</div>
-          <div className="text-gray-400">Score {gameState.score}</div>
+          <div className="text-blue-400">波次 {gameState.wave}</div>
+          <div className="text-gray-400">分数 {gameState.score}</div>
         </div>
         
         {phase === GamePhase.PLAYING && (
@@ -37,15 +37,15 @@ export const GameUI: React.FC<Props> = ({
         )}
       </div>
 
-      {/* Bottom Controls */}
+      {/* 底部控制栏 */}
       <div className="pointer-events-auto flex flex-col gap-2 items-center w-full">
-        {/* Start Wave Button */}
+        {/* 开始按钮 */}
         {phase === GamePhase.MENU && (
              <button 
              onClick={onNextWave}
              className="mb-4 bg-green-600 hover:bg-green-500 text-white border-b-4 border-green-800 active:border-b-0 active:translate-y-1 px-8 py-3 font-bold text-sm md:text-base animate-bounce"
            >
-             START FIRST WAVE
+             开始第一波
            </button>
         )}
         
@@ -63,12 +63,12 @@ export const GameUI: React.FC<Props> = ({
                   disabled={!canAfford}
                   className={`
                     relative flex flex-col items-center justify-center w-16 h-16 md:w-20 md:h-20 p-1
-                    border-2 transition-all
+                    border-2 transition-all shrink-0
                     ${isSelected ? 'border-white bg-white/20 -translate-y-2' : 'border-gray-600 bg-gray-900'}
                     ${!canAfford ? 'opacity-50 cursor-not-allowed grayscale' : 'hover:border-gray-400'}
                   `}
                 >
-                  {/* Tower Icon Placeholder */}
+                  {/* 塔图标颜色块 */}
                   <div 
                     className="w-6 h-6 md:w-8 md:h-8 mb-1 shadow-inner"
                     style={{ backgroundColor: stats.color }}

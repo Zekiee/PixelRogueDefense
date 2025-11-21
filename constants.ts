@@ -2,10 +2,10 @@ import { Point, TowerType, UpgradeCard, TowerStats } from './types';
 
 export const GRID_W = 16;
 export const GRID_H = 9;
-export const CELL_SIZE = 64; // Virtual pixel size, scaled by canvas
+export const CELL_SIZE = 64; // 虚拟像素大小，会被Canvas缩放
 export const FPS = 60;
 
-// A winding path for enemies
+// 敌人的移动路径
 export const MAP_PATH: Point[] = [
   { x: 0, y: 1 },
   { x: 3, y: 1 },
@@ -16,58 +16,58 @@ export const MAP_PATH: Point[] = [
   { x: 12, y: 7 },
   { x: 15, y: 7 },
   { x: 15, y: 4 },
-  { x: 16, y: 4 } // Exit
+  { x: 16, y: 4 } // 出口
 ];
 
 export const TOWER_STATS: Record<TowerType, TowerStats> = {
   [TowerType.ARCHER]: {
-    name: "Archer",
+    name: "弓箭手",
     cost: 50,
     range: 3.5,
     damage: 15,
-    cooldown: 40, // Frames
-    color: '#34d399', // Emerald
-    desc: "Fast firing, single target."
+    cooldown: 40, // 帧数
+    color: '#34d399', // 翡翠绿
+    desc: "射速快，单体伤害。"
   },
   [TowerType.CANNON]: {
-    name: "Cannon",
+    name: "加农炮",
     cost: 120,
     range: 3,
     damage: 40,
     cooldown: 90,
-    color: '#f87171', // Red
+    color: '#f87171', // 红色
     splash: 1.5,
-    desc: "High damage, splash area."
+    desc: "高伤害，范围溅射。"
   },
   [TowerType.MAGE]: {
-    name: "Ice Mage",
+    name: "冰法师",
     cost: 150,
     range: 4,
     damage: 10,
     cooldown: 30,
-    color: '#60a5fa', // Blue
+    color: '#60a5fa', // 蓝色
     freeze: 30,
-    desc: "Slows enemies."
+    desc: "减缓敌人移动速度。"
   },
   [TowerType.SNIPER]: {
-    name: "Sniper",
+    name: "狙击手",
     cost: 250,
     range: 8,
     damage: 150,
     cooldown: 180,
-    color: '#c084fc', // Purple
-    desc: "Infinite range, massive damage."
+    color: '#c084fc', // 紫色
+    desc: "无限射程，巨额伤害。"
   }
 };
 
 export const ROGUE_UPGRADES: Omit<UpgradeCard, 'apply'>[] = [
-  { id: 'dmg_up', title: 'Sharp Arrows', description: 'All towers gain +20% damage.', rarity: 'COMMON' },
-  { id: 'spd_up', title: 'Rapid Fire', description: 'All towers attack 15% faster.', rarity: 'COMMON' },
-  { id: 'eco_up', title: 'Gold Rush', description: 'Gain +100 Gold immediately.', rarity: 'COMMON' },
-  { id: 'rng_up', title: 'Eagle Eye', description: 'All towers range +1.', rarity: 'RARE' },
-  { id: 'int_up', title: 'Compound Interest', description: 'Gain 10% of current gold.', rarity: 'RARE' },
-  { id: 'sniper_buff', title: 'Headshot', description: 'Snipers deal double damage.', rarity: 'LEGENDARY' },
-  { id: 'base_hp', title: 'Fortification', description: 'Repair 5 base lives.', rarity: 'COMMON' },
+  { id: 'dmg_up', title: '锐利箭矢', description: '所有防御塔伤害 +20%', rarity: 'COMMON' },
+  { id: 'spd_up', title: '急速射击', description: '所有防御塔攻速 +15%', rarity: 'COMMON' },
+  { id: 'eco_up', title: '淘金热', description: '立即获得 100 金币', rarity: 'COMMON' },
+  { id: 'rng_up', title: '鹰眼', description: '所有防御塔射程 +1', rarity: 'RARE' },
+  { id: 'int_up', title: '复利', description: '获得当前金币的 10%', rarity: 'RARE' },
+  { id: 'sniper_buff', title: '爆头', description: '狙击手造成双倍伤害', rarity: 'LEGENDARY' },
+  { id: 'base_hp', title: '基地加固', description: '修复 5 点生命值', rarity: 'COMMON' },
 ];
 
 export const INITIAL_STATE = {
