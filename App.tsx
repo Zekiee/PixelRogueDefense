@@ -6,13 +6,19 @@ import { GameUI } from './components/GameUI';
 import { UpgradeMenu } from './components/UpgradeMenu';
 import { getWaveFlavorText } from './services/geminiService';
 
+// --- 常量定义 ---
+const UI_ROWS = 2; // 底部保留给UI的行数
+const PLAYABLE_H = GRID_H - UI_ROWS; // 实际游戏区域高度
+
 // --- 工具函数 ---
 const getDistance = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y);
 
 // 简单的随机路径生成器
 const generatePath = (): Point[] => {
   const path: Point[] = [];
-  let current = { x: 0, y: Math.floor(Math.random() * (GRID_H - 2)) + 1 };
+  // 限制起始 Y 在 1 到 PLAYABLE_H - 2 之间 (留出顶部和底部缓冲)
+  const maxStart = Math.max(1, PLAYABLE_H - 2);
+  let current = { x: 0, y: Math.floor(Math.random() * maxStart) + 1 };
   path.push({ ...current });
 
   while (current.x < GRID_W - 1) {
@@ -32,7 +38,8 @@ const generatePath = (): Point[] => {
       // 变道
       const direction = Math.random() > 0.5 ? 1 : -1;
       const nextY = current.y + direction;
-      if (nextY >= 1 && nextY < GRID_H - 1) { // 留出边距
+      // 限制路径不超出顶部和 PLAYABLE_H
+      if (nextY >= 1 && nextY < PLAYABLE_H - 1) { 
         path.push({ x: current.x, y: nextY });
         current.y = nextY;
       } else {
@@ -715,7 +722,7 @@ const App: React.FC = () => {
     }
     ctx.stroke();
 
-    // 2. 塔
+    // 2. 塔 (只在可行区域绘制)
     state.grid.forEach((row, y) => {
       row.forEach((tower, x) => {
         if (tower) {
@@ -789,7 +796,7 @@ const App: React.FC = () => {
     // 7. 建造预览
     if (hoverPos.current && selectedTowerType) {
       const { x, y } = hoverPos.current;
-      if (x >= 0 && x < GRID_W && y >= 0 && y < GRID_H) {
+      if (x >= 0 && x < GRID_W && y >= 0 && y < PLAYABLE_H) {
         const cx = (x + 0.5) * scaleX;
         const cy = (y + 0.5) * scaleY;
         const stats = TOWER_STATS[selectedTowerType];
@@ -809,9 +816,31 @@ const App: React.FC = () => {
     }
 
     ctx.restore(); // End Screen Shake transform
+
+    // 8. 绘制底部UI区域遮罩 (最后绘制，确保覆盖)
+    const uiY = PLAYABLE_H * scaleY;
+    ctx.fillStyle = '#0f172a'; // 深蓝黑
+    ctx.fillRect(0, uiY, width, height - uiY);
+    // 警示条纹
+    ctx.fillStyle = '#1e293b';
+    for(let i=0; i<width; i+=20) {
+        ctx.beginPath();
+        ctx.moveTo(i, uiY);
+        ctx.lineTo(i+10, uiY);
+        ctx.lineTo(i-10, height);
+        ctx.lineTo(i-20, height);
+        ctx.fill();
+    }
+    // 分割线
+    ctx.strokeStyle = '#334155';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(0, uiY); ctx.lineTo(width, uiY); ctx.stroke();
   };
 
   const isValidPlacement = (x: number, y: number, state: GameState) => {
+    // 禁止在 UI 区域建造
+    if (y >= PLAYABLE_H) return false;
+
     if (state.grid[y][x]) return false;
     for (let i=0; i < state.path.length - 1; i++) {
       const p1 = state.path[i];
@@ -871,6 +900,13 @@ const App: React.FC = () => {
     const x = Math.floor((clientX - rect.left) / (rect.width / GRID_W));
     const y = Math.floor((clientY - rect.top) / (rect.height / GRID_H));
     
+    // 如果点击了UI区域，直接忽略
+    if (y >= PLAYABLE_H) {
+        setSelectedPlacedTower(null);
+        setSelectedTowerType(null);
+        return;
+    }
+
     const clickedTower = gameStateRef.current.grid[y][x];
 
     if (clickedTower) {
