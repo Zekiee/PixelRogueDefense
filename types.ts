@@ -96,6 +96,7 @@ export interface GameState {
   score: number;
   grid: (Tower | null)[][];
   path: Point[]; // Dynamic path for current stage
+  obstacles: Point[]; // Non-buildable terrain
   enemies: Enemy[];
   projectiles: Projectile[];
   particles: Particle[];

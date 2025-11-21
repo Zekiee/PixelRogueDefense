@@ -13,18 +13,26 @@ const PLAYABLE_H = GRID_H - UI_ROWS; // 实际游戏区域高度
 // --- 工具函数 ---
 const getDistance = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y);
 
-// 简单的随机路径生成器
-const generatePath = (): Point[] => {
+// 关卡生成器 (Rogue: 难度随 Stage 增加)
+const generateLevelData = (stage: number): { path: Point[], obstacles: Point[] } => {
   const path: Point[] = [];
+  const obstacles: Point[] = [];
+  
+  // 1. 生成路径
   // 限制起始 Y 在 1 到 PLAYABLE_H - 2 之间 (留出顶部和底部缓冲)
   const maxStart = Math.max(1, PLAYABLE_H - 2);
   let current = { x: 0, y: Math.floor(Math.random() * maxStart) + 1 };
   path.push({ ...current });
 
+  // 难度控制：
+  // Stage 越低，越容易生成蜿蜒的路径 (moveRightChance 低)，路径越长 -> 简单
+  // Stage 越高，越容易直线向右 (moveRightChance 高)，路径越短 -> 困难
+  // 初始向右概率从 0.3 开始，每级增加 0.05，上限 0.8
+  const baseMoveRightChance = Math.min(0.8, 0.3 + (stage * 0.05));
+
   while (current.x < GRID_W - 1) {
     // 决定下一步去哪里
-    // 70% 概率向右，30% 概率改变 Y 轴
-    const moveRight = Math.random() > 0.3 || current.x === 0;
+    const moveRight = Math.random() < baseMoveRightChance || current.x === 0;
     
     if (moveRight) {
       const steps = Math.floor(Math.random() * 2) + 1; // 向右走 1-2 格
@@ -35,15 +43,20 @@ const generatePath = (): Point[] => {
       }
       current.x = nextX;
     } else {
-      // 变道
+      // 变道 (Y轴移动)
       const direction = Math.random() > 0.5 ? 1 : -1;
       const nextY = current.y + direction;
+      
+      // 检查是否在范围内且不是回头路
+      const previous = path.length > 1 ? path[path.length - 2] : null;
+      const isBacktracking = previous && previous.x === current.x && previous.y === nextY;
+
       // 限制路径不超出顶部和 PLAYABLE_H
-      if (nextY >= 1 && nextY < PLAYABLE_H - 1) { 
+      if (nextY >= 1 && nextY < PLAYABLE_H - 1 && !isBacktracking) { 
         path.push({ x: current.x, y: nextY });
         current.y = nextY;
       } else {
-         // 如果撞墙，强制向右
+         // 如果撞墙或回头，强制向右
          current.x++;
          path.push({ ...current });
       }
@@ -54,7 +67,25 @@ const generatePath = (): Point[] => {
      path.push({ x: GRID_W, y: path[path.length-1].y });
   }
 
-  return path;
+  // 2. 生成障碍物
+  // 数量随关卡微增
+  const obstacleCount = 3 + Math.floor(Math.random() * 3) + Math.floor(stage * 0.5);
+  let attempts = 0;
+  while (obstacles.length < obstacleCount && attempts < 100) {
+      attempts++;
+      const ox = Math.floor(Math.random() * GRID_W);
+      const oy = Math.floor(Math.random() * PLAYABLE_H);
+      
+      // 检查碰撞：不在路径上，不与现有障碍物重叠
+      const onPath = path.some(p => p.x === ox && p.y === oy);
+      const existing = obstacles.some(o => o.x === ox && o.y === oy);
+      
+      if (!onPath && !existing) {
+          obstacles.push({ x: ox, y: oy });
+      }
+  }
+
+  return { path, obstacles };
 };
 
 const App: React.FC = () => {
@@ -62,10 +93,12 @@ const App: React.FC = () => {
   const requestRef = useRef<number>(0);
   
   // 初始化状态
+  const initialLevel = generateLevelData(1);
   const gameStateRef = useRef<GameState>({
     ...INITIAL_STATE,
     grid: Array(GRID_H).fill(null).map(() => Array(GRID_W).fill(null)),
-    path: generatePath(),
+    path: initialLevel.path,
+    obstacles: initialLevel.obstacles,
     enemies: [],
     projectiles: [],
     particles: [],
@@ -469,12 +502,13 @@ const App: React.FC = () => {
   };
 
   const addFloatingText = (x: number, y: number, text: string, color: string, size: number = 1) => {
-      gameStateRef.current.floatingTexts.push({
-          id: Math.random().toString(),
-          x, y, text, color, size,
-          life: 40,
-          vy: 0.02
-      });
+    // 确保在 phase change 时也能添加 (use current ref directly in case)
+    gameStateRef.current.floatingTexts.push({
+        id: Math.random().toString(),
+        x, y, text, color, size,
+        life: 60, // 稍微延长寿命，确保换关时能看清
+        vy: 0.03
+    });
   };
 
   const hitEnemy = (proj: Projectile, target: Enemy | undefined, state: GameState) => {
@@ -627,16 +661,37 @@ const App: React.FC = () => {
 
   const startNextStage = () => {
     const state = gameStateRef.current;
-    state.grid = Array(GRID_H).fill(null).map(() => Array(GRID_W).fill(null));
-    state.path = generatePath();
-    state.stage += 1;
+    let recoveredMoney = 0;
+
+    // 1. 清除无关实体
     state.projectiles = [];
-    state.particles = [];
     state.enemies = [];
-    state.floatingTexts = [];
+    state.floatingTexts = []; // 清除旧的文字
+    state.particles = []; // 清除旧的粒子
+
+    // 2. 自动出售当前地图所有塔
+    state.grid.forEach((row, y) => {
+        row.forEach((tower, x) => {
+            if (tower) {
+                const sellValue = Math.floor(tower.totalInvested * SELL_RATIO);
+                state.money += sellValue;
+                recoveredMoney += sellValue;
+                // 生成视觉特效（此时 grid 还没清空，位置是正确的）
+                addFloatingText(x, y, `+$${sellValue}`, '#fbbf24', 1.2);
+                addParticles(x, y, '#ef4444', 8); // 红色/金色回收粒子
+            }
+        });
+    });
+
+    // 3. 清空网格并生成新地图
+    state.grid = Array(GRID_H).fill(null).map(() => Array(GRID_W).fill(null));
+    const nextLevel = generateLevelData(state.stage + 1);
+    state.path = nextLevel.path;
+    state.obstacles = nextLevel.obstacles;
+    state.stage += 1;
     
     setPhase(GamePhase.MENU);
-    setFlavorText(`进入第 ${state.stage} 区域。新的地形，新的挑战！`);
+    setFlavorText(`进入第 ${state.stage} 区域。已自动回收防御塔，获得资金 $${recoveredMoney}！`);
   };
 
   const handleUpgradeTower = () => {
@@ -709,6 +764,19 @@ const App: React.FC = () => {
         ctx.fillRect(rectX, rectY, rectW, rectH);
     }
     
+    // 绘制障碍物 (Phase 2 Change)
+    ctx.fillStyle = '#4b5563'; // Gray-600
+    state.obstacles.forEach(o => {
+        const ox = o.x * scaleX;
+        const oy = o.y * scaleY;
+        // Draw a rock shape
+        ctx.fillRect(ox + scaleX*0.1, oy + scaleY*0.1, scaleX*0.8, scaleY*0.8);
+        // Highlight
+        ctx.fillStyle = '#6b7280';
+        ctx.fillRect(ox + scaleX*0.2, oy + scaleY*0.2, scaleX*0.4, scaleY*0.4);
+        ctx.fillStyle = '#4b5563'; // Reset
+    });
+
     ctx.strokeStyle = '#3f3f46';
     ctx.lineWidth = scaleX * 0.1;
     ctx.lineCap = 'round';
@@ -840,6 +908,9 @@ const App: React.FC = () => {
   const isValidPlacement = (x: number, y: number, state: GameState) => {
     // 禁止在 UI 区域建造
     if (y >= PLAYABLE_H) return false;
+
+    // 检查障碍物 (Phase 2 Change)
+    if (state.obstacles.some(o => o.x === x && o.y === y)) return false;
 
     if (state.grid[y][x]) return false;
     for (let i=0; i < state.path.length - 1; i++) {
