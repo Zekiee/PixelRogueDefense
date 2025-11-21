@@ -6,7 +6,7 @@ import { GameUI } from './components/GameUI';
 import { UpgradeMenu } from './components/UpgradeMenu';
 import { getWaveFlavorText } from './services/geminiService';
 import { GameEngine } from './systems/GameLogic';
-import { RenderSystem } from './systems/RenderSystem';
+import { RenderSystem, DragState } from './systems/RenderSystem';
 import { getGameCoordinates } from './utils/input';
 
 // Hook to get window size
@@ -41,8 +41,8 @@ const App: React.FC = () => {
   
   // --- UI State ---
   const [phase, setPhase] = useState<GamePhase>(GamePhase.MENU);
-  const [selectedTowerType, setSelectedTowerType] = useState<TowerType | null>(null);
   const [selectedPlacedTower, setSelectedPlacedTower] = useState<Tower | null>(null);
+  const [dragState, setDragState] = useState<DragState | null>(null);
   
   // We clone the state for React UI to trigger re-renders
   const [uiState, setUiState] = useState(engineRef.current.state); 
@@ -78,7 +78,7 @@ const App: React.FC = () => {
               canvas.width, 
               canvas.height, 
               hoverPos.current,
-              selectedTowerType,
+              dragState,
               selectedPlacedTower ? {x: selectedPlacedTower.x, y: selectedPlacedTower.y} : null,
               engine.modifiers
           );
@@ -86,7 +86,7 @@ const App: React.FC = () => {
     }
     
     requestRef.current = requestAnimationFrame(loop);
-  }, [phase, selectedTowerType, selectedPlacedTower]);
+  }, [phase, dragState, selectedPlacedTower]);
 
   useEffect(() => {
     requestRef.current = requestAnimationFrame(loop);
@@ -99,14 +99,20 @@ const App: React.FC = () => {
 
   // --- Interactions ---
   const handleCanvasClick = (e: React.MouseEvent | React.TouchEvent) => {
+    if (dragState) return; // Don't process clicks if we were just dragging (mouseup triggers this)
+
     const canvas = canvasRef.current;
     if (!canvas) return;
     
     const rect = canvas.getBoundingClientRect();
     let clientX, clientY;
     if ('touches' in e) {
-      clientX = e.touches[0].clientX;
-      clientY = e.touches[0].clientY;
+      // For touches, we might not need this if we rely on pointer events for logic
+      // But click is good for selection
+      if (e.touches.length > 0) {
+          clientX = e.touches[0].clientX;
+          clientY = e.touches[0].clientY;
+      } else return;
     } else {
       clientX = (e as React.MouseEvent).clientX;
       clientY = (e as React.MouseEvent).clientY;
@@ -114,35 +120,77 @@ const App: React.FC = () => {
     
     const { x, y } = getGameCoordinates(clientX, clientY, rect, isPortrait);
     
-    if (y >= PLAYABLE_H) {
-        setSelectedPlacedTower(null);
-        setSelectedTowerType(null);
-        return;
-    }
-    if (x < 0 || x >= GRID_W || y < 0 || y >= GRID_H) return;
-
-    const clickedTower = engineRef.current.state.grid[y][x];
-
-    if (clickedTower) {
-      setSelectedPlacedTower(clickedTower);
-      setSelectedTowerType(null);
-    } else if (selectedTowerType) {
-        const success = engineRef.current.placeTower(x, y, selectedTowerType);
-        if (success) {
-            setSelectedTowerType(null);
+    // Handle Selection of Existing Towers
+    if (y < PLAYABLE_H && x >= 0 && x < GRID_W) {
+        const clickedTower = engineRef.current.state.grid[y][x];
+        if (clickedTower) {
+          setSelectedPlacedTower(clickedTower);
+        } else {
+          setSelectedPlacedTower(null);
         }
     } else {
-      setSelectedPlacedTower(null);
+        setSelectedPlacedTower(null);
     }
   };
 
-  const handleMouseMove = (e: React.MouseEvent) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
-    const { x, y } = getGameCoordinates(e.clientX, e.clientY, rect, isPortrait);
-    hoverPos.current = { x, y };
+  const handleDragStart = (type: TowerType, e: React.PointerEvent) => {
+      e.stopPropagation();
+      // Initial position check
+      const canvas = canvasRef.current;
+      if(canvas) {
+          const rect = canvas.getBoundingClientRect();
+          const { x, y } = getGameCoordinates(e.clientX, e.clientY, rect, isPortrait);
+          // Valid if playable area (though usually start in UI)
+          const valid = engineRef.current.isValidPlacement(x, y);
+          setDragState({ type, x, y, valid });
+      }
   };
+
+  // Global Pointer Events for Dragging
+  useEffect(() => {
+      const handleGlobalMove = (e: PointerEvent) => {
+          if (!dragState) return;
+          if (canvasRef.current) {
+              const rect = canvasRef.current.getBoundingClientRect();
+              const { x, y } = getGameCoordinates(e.clientX, e.clientY, rect, isPortrait);
+              
+              // Avoid excessive state updates if position hasn't changed
+              if (x !== dragState.x || y !== dragState.y) {
+                  const valid = engineRef.current.isValidPlacement(x, y);
+                  setDragState({ ...dragState, x, y, valid });
+              }
+          }
+      };
+
+      const handleGlobalUp = (e: PointerEvent) => {
+          if (!dragState) return;
+          
+          if (canvasRef.current) {
+               const rect = canvasRef.current.getBoundingClientRect();
+               const { x, y } = getGameCoordinates(e.clientX, e.clientY, rect, isPortrait);
+               
+               if (engineRef.current.isValidPlacement(x, y)) {
+                   const success = engineRef.current.placeTower(x, y, dragState.type);
+                   if (!success) {
+                       // Feedback for not enough money? (UI handles disabled button, but double check)
+                   }
+               }
+          }
+          setDragState(null);
+      };
+
+      if (dragState) {
+          window.addEventListener('pointermove', handleGlobalMove);
+          window.addEventListener('pointerup', handleGlobalUp);
+          window.addEventListener('pointercancel', handleGlobalUp);
+      }
+      
+      return () => {
+          window.removeEventListener('pointermove', handleGlobalMove);
+          window.removeEventListener('pointerup', handleGlobalUp);
+          window.removeEventListener('pointercancel', handleGlobalUp);
+      };
+  }, [dragState, isPortrait]);
 
   const handleActions = {
       onNextWave: async () => {
@@ -161,7 +209,6 @@ const App: React.FC = () => {
           if (selectedPlacedTower) {
               const success = engineRef.current.upgradeTower(selectedPlacedTower.x, selectedPlacedTower.y);
               if (success) {
-                  // Force update selected ref since level changed
                   setSelectedPlacedTower({...engineRef.current.state.grid[selectedPlacedTower.y][selectedPlacedTower.x]!});
               }
           }
@@ -224,18 +271,17 @@ const App: React.FC = () => {
           height={GRID_H * CELL_SIZE}
           className="w-full h-full block cursor-pointer"
           onClick={handleCanvasClick} 
-          onMouseMove={handleMouseMove}
-          onTouchStart={handleCanvasClick} 
+          // We don't use onMouseMove here for drag logic anymore, global listener takes over
         />
 
         <GameUI 
           gameState={uiState} 
           phase={phase}
-          selectedTowerType={selectedTowerType}
           selectedPlacedTower={selectedPlacedTower}
-          onSelectTowerType={(t) => { setSelectedTowerType(t); setSelectedPlacedTower(null); }}
+          onDragStart={handleDragStart}
           onUpgradeTower={handleActions.onUpgradeTower}
           onSellTower={handleActions.onSellTower}
+          onCancelSelection={() => setSelectedPlacedTower(null)}
           onNextWave={handleActions.onNextWave}
           onNextStage={handleActions.onNextStage}
           onOrbitalStrike={handleActions.onOrbitalStrike}

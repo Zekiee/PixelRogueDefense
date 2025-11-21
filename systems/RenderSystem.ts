@@ -2,6 +2,13 @@
 import { GameState, TowerType, Point } from '../types';
 import { GRID_W, GRID_H, CELL_SIZE, TOWER_STATS, PLAYABLE_H } from '../constants';
 
+export interface DragState {
+    type: TowerType;
+    x: number;
+    y: number;
+    valid: boolean;
+}
+
 export class RenderSystem {
   
   draw(
@@ -10,7 +17,7 @@ export class RenderSystem {
     width: number, 
     height: number,
     hoverPos: Point | null,
-    selectedTowerType: TowerType | null,
+    dragState: DragState | null,
     selectedPlacedTower: Point | null,
     modifiers: any
   ) {
@@ -160,36 +167,39 @@ export class RenderSystem {
         ctx.restore();
     });
     
-    // Placement Preview
-    if (hoverPos && selectedTowerType) {
-      const { x, y } = hoverPos;
-      if (x >= 0 && x < GRID_W && y >= 0 && y < PLAYABLE_H) {
-        const cx = (x + 0.5) * scaleX;
-        const cy = (y + 0.5) * scaleY;
-        const stats = TOWER_STATS[selectedTowerType];
-        
-        ctx.beginPath();
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
-        ctx.setLineDash([5, 5]);
-        ctx.lineWidth = 2;
-        ctx.arc(cx, cy, (stats.range + modifiers.rangeAdd) * scaleX, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.setLineDash([]);
-        
-        // Simple validity check for coloring (Logic is in GameEngine, but we mirror it for speed here or pass a prop)
-        // Ideally logic determines validity. Here we just guess green/red based on grid occupancy.
-        // Refined later via props if needed.
-        const valid = !state.grid[y][x] && !state.obstacles.some(o => o.x === x && o.y === y) && !state.path.some((p, i) => {
-            if (i === state.path.length - 1) return false;
-            const p1 = p; const p2 = state.path[i+1];
-            const minX = Math.min(p1.x, p2.x); const maxX = Math.max(p1.x, p2.x);
-            const minY = Math.min(p1.y, p2.y); const maxY = Math.max(p1.y, p2.y);
-            return x >= minX && x <= maxX && y >= minY && y <= maxY;
-        });
-        
-        ctx.fillStyle = valid ? 'rgba(34, 197, 94, 0.4)' : 'rgba(239, 68, 68, 0.4)';
-        ctx.fillRect(x * scaleX, y * scaleY, scaleX, scaleY);
-      }
+    // Drag & Drop Preview (Ghost Tower)
+    if (dragState) {
+      const { x, y, type, valid } = dragState;
+      const cx = (x + 0.5) * scaleX;
+      const cy = (y + 0.5) * scaleY;
+      const stats = TOWER_STATS[type];
+      
+      // Draw Validity Indicator on Grid
+      ctx.fillStyle = valid ? 'rgba(34, 197, 94, 0.4)' : 'rgba(239, 68, 68, 0.4)';
+      ctx.fillRect(x * scaleX, y * scaleY, scaleX, scaleY);
+
+      // Draw Range Circle (Centered on Grid)
+      ctx.beginPath();
+      ctx.strokeStyle = valid ? 'rgba(255, 255, 255, 0.5)' : 'rgba(255, 100, 100, 0.5)';
+      ctx.setLineDash([5, 5]);
+      ctx.lineWidth = 2;
+      ctx.arc(cx, cy, (stats.range + modifiers.rangeAdd) * scaleX, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Draw Ghost Tower (Offset upwards so finger doesn't hide it)
+      // VISUAL_OFFSET_Y = 1.5 cells up
+      const ghostY = cy - (scaleY * 1.5);
+      
+      ctx.save();
+      ctx.globalAlpha = 0.8;
+      // Draw a connection line from finger to ghost
+      ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx, ghostY); ctx.stroke();
+      
+      this.drawSVGTower(ctx, cx, ghostY, scaleX * 0.9, type, 1, stats.color);
+      ctx.restore();
     }
 
     ctx.restore(); 

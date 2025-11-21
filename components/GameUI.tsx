@@ -1,31 +1,31 @@
 
 import React from 'react';
 import { GamePhase, GameState, TowerType, Tower } from '../types';
-import { TOWER_STATS, SELL_RATIO, UPGRADE_COST_MULTIPLIER, MAX_ENERGY, COMBO_TIMEOUT, COMBO_DAMAGE_SCALING } from '../constants';
+import { TOWER_STATS, UPGRADE_COST_MULTIPLIER, MAX_ENERGY, COMBO_TIMEOUT, COMBO_DAMAGE_SCALING } from '../constants';
 
 interface Props {
   gameState: GameState;
   phase: GamePhase;
-  selectedTowerType: TowerType | null;
   selectedPlacedTower: Tower | null;
-  onSelectTowerType: (type: TowerType | null) => void;
+  onDragStart: (type: TowerType, e: React.PointerEvent) => void;
   onUpgradeTower: () => void;
   onSellTower: () => void;
+  onCancelSelection: () => void;
   onNextWave: () => void;
   onNextStage: () => void;
   onOrbitalStrike: () => void;
-  onToggleFullscreen: () => void; // New prop
+  onToggleFullscreen: () => void;
   flavorText: string;
 }
 
 export const GameUI: React.FC<Props> = ({ 
   gameState, 
   phase, 
-  selectedTowerType, 
   selectedPlacedTower,
-  onSelectTowerType, 
+  onDragStart, 
   onUpgradeTower,
   onSellTower,
+  onCancelSelection,
   onNextWave,
   onNextStage,
   onOrbitalStrike,
@@ -37,19 +37,18 @@ export const GameUI: React.FC<Props> = ({
     if (!selectedPlacedTower) return null;
     const stats = TOWER_STATS[selectedPlacedTower.type];
     const upgradeCost = Math.floor(stats.cost * Math.pow(UPGRADE_COST_MULTIPLIER, selectedPlacedTower.level));
-    const sellValue = Math.floor(selectedPlacedTower.totalInvested * SELL_RATIO);
+    const sellValue = Math.floor(selectedPlacedTower.totalInvested * 0.7);
     return { upgradeCost, sellValue, name: stats.name };
   };
 
   const upgradeInfo = getUpgradeInfo();
 
-  // Calculate combo bar percentage
   const comboPercent = (gameState.comboTimer / COMBO_TIMEOUT) * 100;
   const energyPercent = (gameState.energy / MAX_ENERGY) * 100;
 
   return (
     <div className="absolute inset-0 pointer-events-none flex flex-col justify-between p-2 md:p-4 select-none">
-      {/* 顶部信息栏 */}
+      {/* Top Info Bar */}
       <div className="flex flex-col w-full pointer-events-auto gap-2">
         <div className="flex justify-between items-start">
              <div className="flex gap-3 text-white text-xs md:text-sm bg-black/60 p-2 rounded-lg border border-white/20 backdrop-blur-sm shadow-lg">
@@ -63,7 +62,6 @@ export const GameUI: React.FC<Props> = ({
             </div>
 
             <div className="flex gap-2">
-              {/* 全屏按钮 */}
               <button 
                 onClick={onToggleFullscreen}
                 className="w-8 h-8 md:w-10 md:h-10 bg-gray-800/80 border border-gray-500 text-white rounded hover:bg-gray-700 flex items-center justify-center text-sm md:text-lg"
@@ -72,7 +70,6 @@ export const GameUI: React.FC<Props> = ({
                 ⛶
               </button>
 
-              {/* 大招按钮 */}
               <button 
                   onClick={onOrbitalStrike}
                   disabled={gameState.energy < MAX_ENERGY || phase !== GamePhase.PLAYING}
@@ -96,7 +93,7 @@ export const GameUI: React.FC<Props> = ({
             </div>
         </div>
 
-        {/* Combo 连击条 */}
+        {/* Combo Bar */}
         {gameState.combo > 0 && (
             <div className="self-start mt-2 flex flex-col animate-slideInLeft">
                 <div className="flex items-end gap-2">
@@ -124,7 +121,7 @@ export const GameUI: React.FC<Props> = ({
         )}
       </div>
 
-      {/* 底部控制区域 */}
+      {/* Bottom Control Deck */}
       <div className="pointer-events-auto flex flex-col items-center w-full gap-2">
         
         {phase === GamePhase.MENU && (
@@ -148,7 +145,7 @@ export const GameUI: React.FC<Props> = ({
         <div className="w-full max-w-3xl bg-gray-900/90 border-t-2 border-gray-600 p-2 md:p-3 rounded-t-xl flex flex-col md:flex-row items-center justify-between gap-4 transition-all">
           
           {selectedPlacedTower && upgradeInfo ? (
-            // --- 升级/出售界面 ---
+            // --- Upgrade/Sell Menu ---
             <div className="flex w-full justify-between items-center animate-slideUp">
               <div className="text-white flex flex-col">
                 <span className="font-bold text-yellow-400">{upgradeInfo.name} (Lv.{selectedPlacedTower.level})</span>
@@ -177,7 +174,7 @@ export const GameUI: React.FC<Props> = ({
                 </button>
                 
                 <button 
-                  onClick={() => onSelectTowerType(null)} 
+                  onClick={onCancelSelection}
                   className="px-4 py-2 bg-gray-700 text-white rounded border border-gray-500 text-xs"
                 >
                   取消
@@ -185,33 +182,33 @@ export const GameUI: React.FC<Props> = ({
               </div>
             </div>
           ) : (
-            // --- 建造栏 ---
-            <div className="flex gap-2 overflow-x-auto w-full justify-center">
+            // --- Drag & Drop Tower Palette ---
+            <div className="flex gap-2 overflow-x-auto w-full justify-center touch-pan-x">
               {(Object.keys(TOWER_STATS) as TowerType[]).map((type) => {
                 const stats = TOWER_STATS[type];
                 const canAfford = gameState.money >= stats.cost;
-                const isSelected = selectedTowerType === type;
                 
                 return (
                   <button
                     key={type}
-                    onClick={() => onSelectTowerType(isSelected ? null : type)}
+                    onPointerDown={(e) => {
+                        if (canAfford) onDragStart(type, e);
+                    }}
                     disabled={!canAfford}
                     className={`
                       relative group flex flex-col items-center justify-center w-14 h-14 md:w-20 md:h-20 p-1
-                      border-2 rounded transition-all shrink-0
-                      ${isSelected ? 'border-white bg-white/20 -translate-y-1 shadow-[0_0_10px_rgba(255,255,255,0.5)]' : 'border-gray-600 bg-gray-800'}
-                      ${!canAfford ? 'opacity-40 grayscale' : 'hover:border-gray-400 hover:bg-gray-700'}
+                      border-2 rounded transition-all shrink-0 touch-none select-none
+                      ${!canAfford ? 'opacity-40 grayscale border-gray-600 bg-gray-800' : 'border-gray-500 bg-gray-800 hover:bg-gray-700 active:scale-95 cursor-grab active:cursor-grabbing'}
                     `}
                   >
                     <div 
-                      className="w-4 h-4 md:w-8 md:h-8 mb-1 rounded-sm shadow-sm"
+                      className="w-4 h-4 md:w-8 md:h-8 mb-1 rounded-sm shadow-sm pointer-events-none"
                       style={{ backgroundColor: stats.color }}
                     ></div>
-                    <div className="text-[9px] md:text-[10px] text-white text-center font-bold leading-none">
+                    <div className="text-[9px] md:text-[10px] text-white text-center font-bold leading-none pointer-events-none">
                       {stats.name}
                     </div>
-                    <div className="text-[9px] md:text-xs text-yellow-400 font-mono">
+                    <div className="text-[9px] md:text-xs text-yellow-400 font-mono pointer-events-none">
                       ${stats.cost}
                     </div>
                   </button>
