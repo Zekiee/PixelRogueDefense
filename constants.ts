@@ -5,6 +5,11 @@ export const GRID_W = 16;
 export const GRID_H = 9;
 export const CELL_SIZE = 64;
 export const FPS = 60;
+
+// Layout Constants
+export const UI_ROWS = 2; // 底部保留给UI的行数
+export const PLAYABLE_H = GRID_H - UI_ROWS; // 实际游戏区域高度
+
 export const SELL_RATIO = 0.7; // Sell returns 70% of value
 export const REROLL_COST = 50; // Cost to refresh upgrades
 export const UPGRADE_COST_MULTIPLIER = 1.5; // Cost increases by 50% each level

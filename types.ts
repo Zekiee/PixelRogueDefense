@@ -88,6 +88,19 @@ export interface Point {
   y: number;
 }
 
+export interface GameModifiers {
+  damageMul: number;
+  rangeAdd: number;
+  speedMul: number;
+  sniperMul: number;
+  splashRadiusMul: number;
+  executeThreshold: number;
+  critChance: number;
+  critDmg: number;
+  goldOnHitChance: number;
+  explodeOnDeath: number;
+}
+
 export interface GameState {
   money: number;
   lives: number;
@@ -115,5 +128,5 @@ export interface UpgradeCard {
   title: string;
   description: string;
   rarity: 'COMMON' | 'RARE' | 'LEGENDARY';
-  apply: (state: GameState) => void;
+  apply: (state: GameState, modifiers: GameModifiers) => void;
 }
