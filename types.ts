@@ -102,6 +102,12 @@ export interface GameState {
   particles: Particle[];
   floatingTexts: FloatingText[];
   screenShake: number;
+  
+  // Combo & Energy System
+  combo: number;
+  comboTimer: number; // Frames until combo resets
+  energy: number; // 0-100 for Ultimate
+  orbitalStrikeTick: number; // Animation timer for ultimate
 }
 
 export interface UpgradeCard {

@@ -11,6 +11,13 @@ export const UPGRADE_COST_MULTIPLIER = 1.5; // Cost increases by 50% each level
 export const UPGRADE_STAT_MULTIPLIER = 1.25; // Stats increase by 25% each level
 export const WAVES_PER_STAGE = 5; // New map every 5 waves
 
+// Combo System
+export const COMBO_TIMEOUT = 180; // 3 seconds to keep combo alive
+export const COMBO_DAMAGE_SCALING = 0.02; // +2% damage per combo count
+export const MAX_ENERGY = 100;
+export const ENERGY_PER_KILL = 5;
+export const ORBITAL_STRIKE_DAMAGE = 500;
+
 export const TOWER_STATS: Record<TowerType, TowerStats> = {
   [TowerType.ARCHER]: {
     name: "游侠塔",

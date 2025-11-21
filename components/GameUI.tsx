@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { GamePhase, GameState, TowerType, Tower } from '../types';
-import { TOWER_STATS, SELL_RATIO, UPGRADE_COST_MULTIPLIER } from '../constants';
+import { TOWER_STATS, SELL_RATIO, UPGRADE_COST_MULTIPLIER, MAX_ENERGY, COMBO_TIMEOUT, COMBO_DAMAGE_SCALING } from '../constants';
 
 interface Props {
   gameState: GameState;
@@ -13,6 +13,8 @@ interface Props {
   onSellTower: () => void;
   onNextWave: () => void;
   onNextStage: () => void;
+  onOrbitalStrike: () => void;
+  onToggleFullscreen: () => void; // New prop
   flavorText: string;
 }
 
@@ -26,6 +28,8 @@ export const GameUI: React.FC<Props> = ({
   onSellTower,
   onNextWave,
   onNextStage,
+  onOrbitalStrike,
+  onToggleFullscreen,
   flavorText
 }) => {
   
@@ -39,22 +43,82 @@ export const GameUI: React.FC<Props> = ({
 
   const upgradeInfo = getUpgradeInfo();
 
+  // Calculate combo bar percentage
+  const comboPercent = (gameState.comboTimer / COMBO_TIMEOUT) * 100;
+  const energyPercent = (gameState.energy / MAX_ENERGY) * 100;
+
   return (
-    <div className="absolute inset-0 pointer-events-none flex flex-col justify-between p-2 md:p-4">
+    <div className="absolute inset-0 pointer-events-none flex flex-col justify-between p-2 md:p-4 select-none">
       {/* 顶部信息栏 */}
-      <div className="flex flex-col md:flex-row justify-between items-start pointer-events-auto gap-2">
-        <div className="flex gap-3 text-white text-xs md:text-sm bg-black/60 p-2 rounded-lg border border-white/20 backdrop-blur-sm shadow-lg">
-          <div className="flex items-center gap-1"><span className="text-red-500 text-lg">♥</span> {gameState.lives}</div>
-          <div className="flex items-center gap-1"><span className="text-yellow-400 text-lg">$</span> {Math.floor(gameState.money)}</div>
-          <div className="flex items-center gap-1 text-blue-300">
-            <span>关卡 {gameState.stage}</span>
-            <span className="text-gray-500">|</span>
-            <span>波次 {gameState.wave}</span>
-          </div>
+      <div className="flex flex-col w-full pointer-events-auto gap-2">
+        <div className="flex justify-between items-start">
+             <div className="flex gap-3 text-white text-xs md:text-sm bg-black/60 p-2 rounded-lg border border-white/20 backdrop-blur-sm shadow-lg">
+                <div className="flex items-center gap-1"><span className="text-red-500 text-lg">♥</span> {gameState.lives}</div>
+                <div className="flex items-center gap-1"><span className="text-yellow-400 text-lg">$</span> {Math.floor(gameState.money)}</div>
+                <div className="flex items-center gap-1 text-blue-300">
+                    <span>关卡 {gameState.stage}</span>
+                    <span className="text-gray-500">|</span>
+                    <span>波次 {gameState.wave}</span>
+                </div>
+            </div>
+
+            <div className="flex gap-2">
+              {/* 全屏按钮 */}
+              <button 
+                onClick={onToggleFullscreen}
+                className="w-8 h-8 md:w-10 md:h-10 bg-gray-800/80 border border-gray-500 text-white rounded hover:bg-gray-700 flex items-center justify-center text-sm md:text-lg"
+                title="全屏显示"
+              >
+                ⛶
+              </button>
+
+              {/* 大招按钮 */}
+              <button 
+                  onClick={onOrbitalStrike}
+                  disabled={gameState.energy < MAX_ENERGY || phase !== GamePhase.PLAYING}
+                  className={`
+                      relative overflow-hidden rounded-full w-12 h-12 md:w-16 md:h-16 border-2 shadow-[0_0_15px_rgba(255,0,0,0.5)]
+                      transition-all duration-300 flex items-center justify-center flex-col
+                      ${gameState.energy >= MAX_ENERGY 
+                          ? 'bg-red-600 border-red-400 text-white hover:scale-110 cursor-pointer animate-pulse' 
+                          : 'bg-gray-800 border-gray-600 text-gray-500 opacity-80'}
+                  `}
+              >
+                  <span className="text-xs md:text-xl relative z-10">🚀</span>
+                  <div 
+                      className="absolute bottom-0 left-0 w-full bg-yellow-400/30 z-0 transition-all duration-200"
+                      style={{ height: `${energyPercent}%` }}
+                  />
+                  <span className="text-[8px] md:text-[10px] font-bold relative z-10">
+                      {gameState.energy >= MAX_ENERGY ? 'READY' : `${Math.floor(energyPercent)}%`}
+                  </span>
+              </button>
+            </div>
         </div>
+
+        {/* Combo 连击条 */}
+        {gameState.combo > 0 && (
+            <div className="self-start mt-2 flex flex-col animate-slideInLeft">
+                <div className="flex items-end gap-2">
+                    <span className="text-3xl md:text-4xl font-bold text-yellow-400 italic" style={{textShadow: '3px 3px 0 #b91c1c'}}>
+                        {gameState.combo}
+                    </span>
+                    <span className="text-white text-sm font-bold mb-1">COMBO!</span>
+                    <span className="text-green-400 text-xs mb-1">
+                        (+{Math.floor(gameState.combo * COMBO_DAMAGE_SCALING * 100)}% 伤害)
+                    </span>
+                </div>
+                <div className="w-48 h-2 bg-gray-800 rounded-full overflow-hidden border border-white/20">
+                    <div 
+                        className="h-full bg-gradient-to-r from-yellow-500 to-red-600 transition-all duration-75 ease-linear"
+                        style={{ width: `${comboPercent}%` }}
+                    />
+                </div>
+            </div>
+        )}
         
         {(phase === GamePhase.MENU || phase === GamePhase.PLAYING) && (
-          <div className="bg-black/60 text-white px-3 py-2 text-xs md:text-sm border border-white/10 rounded-lg max-w-[300px] text-center italic">
+          <div className="self-center bg-black/60 text-white px-3 py-2 text-xs md:text-sm border border-white/10 rounded-lg max-w-[300px] text-center italic mt-2">
             "{flavorText}"
           </div>
         )}

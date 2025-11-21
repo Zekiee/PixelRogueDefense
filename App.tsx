@@ -1,7 +1,7 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { GamePhase, GameState, TowerType, Enemy, Projectile, Particle, Tower, UpgradeCard, Point, FloatingText } from './types';
-import { GRID_W, GRID_H, CELL_SIZE, TOWER_STATS, ROGUE_UPGRADES, INITIAL_STATE, WAVES_PER_STAGE, UPGRADE_COST_MULTIPLIER, UPGRADE_STAT_MULTIPLIER, SELL_RATIO, REROLL_COST } from './constants';
+import { GRID_W, GRID_H, CELL_SIZE, TOWER_STATS, ROGUE_UPGRADES, INITIAL_STATE, WAVES_PER_STAGE, UPGRADE_COST_MULTIPLIER, UPGRADE_STAT_MULTIPLIER, SELL_RATIO, REROLL_COST, COMBO_TIMEOUT, COMBO_DAMAGE_SCALING, MAX_ENERGY, ENERGY_PER_KILL, ORBITAL_STRIKE_DAMAGE } from './constants';
 import { GameUI } from './components/GameUI';
 import { UpgradeMenu } from './components/UpgradeMenu';
 import { getWaveFlavorText } from './services/geminiService';
@@ -12,6 +12,26 @@ const PLAYABLE_H = GRID_H - UI_ROWS; // 实际游戏区域高度
 
 // --- 工具函数 ---
 const getDistance = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y);
+
+// Hook to get window size for auto-rotation logic
+function useWindowSize() {
+  const [windowSize, setWindowSize] = useState({
+    width: window.innerWidth,
+    height: window.innerHeight,
+  });
+
+  useEffect(() => {
+    function handleResize() {
+      setWindowSize({
+        width: window.innerWidth,
+        height: window.innerHeight,
+      });
+    }
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+  return windowSize;
+}
 
 // 关卡生成器 (Rogue: 难度随 Stage 增加)
 const generateLevelData = (stage: number): { path: Point[], obstacles: Point[] } => {
@@ -91,6 +111,8 @@ const generateLevelData = (stage: number): { path: Point[], obstacles: Point[] }
 const App: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const requestRef = useRef<number>(0);
+  const { width: windowW, height: windowH } = useWindowSize();
+  const isPortrait = windowH > windowW;
   
   // 初始化状态
   const initialLevel = generateLevelData(1);
@@ -103,7 +125,11 @@ const App: React.FC = () => {
     projectiles: [],
     particles: [],
     floatingTexts: [],
-    screenShake: 0
+    screenShake: 0,
+    combo: 0,
+    comboTimer: 0,
+    energy: 0,
+    orbitalStrikeTick: 0
   });
   
   const [phase, setPhase] = useState<GamePhase>(GamePhase.MENU);
@@ -129,7 +155,7 @@ const App: React.FC = () => {
   });
 
   const waveTimeRef = useRef(0);
-  const spawnTimerRef = useRef(0);
+  const enemiesToSpawnRef = useRef<Enemy[]>([]);
 
   // --- 绘图辅助函数 (仿SVG风格) ---
   
@@ -299,8 +325,6 @@ const App: React.FC = () => {
 
   // --- 游戏循环逻辑 ---
 
-  const enemiesToSpawnRef = useRef<Enemy[]>([]);
-  
   const prepareWave = (wave: number) => {
     const count = 5 + Math.floor(wave * 1.5);
     const queue: Enemy[] = [];
@@ -351,13 +375,27 @@ const App: React.FC = () => {
   const updatePhysics = () => {
     const state = gameStateRef.current;
     
-    // Screen Shake Decay (Phase 1)
+    // Screen Shake Decay
     if (state.screenShake > 0) {
         state.screenShake *= 0.9;
         if (state.screenShake < 0.5) state.screenShake = 0;
     }
+    
+    // Ultimate Animation Decay
+    if (state.orbitalStrikeTick > 0) {
+        state.orbitalStrikeTick--;
+    }
 
-    // Floating Texts Physics (Phase 1)
+    // Combo Decay logic
+    if (state.combo > 0) {
+        state.comboTimer--;
+        if (state.comboTimer <= 0) {
+            state.combo = 0;
+            addFloatingText(GRID_W/2, GRID_H/2, "COMBO LOST", "#9ca3af", 1.5);
+        }
+    }
+
+    // Floating Texts Physics
     for (let i = state.floatingTexts.length - 1; i >= 0; i--) {
         const ft = state.floatingTexts[i];
         ft.y -= ft.vy;
@@ -396,6 +434,10 @@ const App: React.FC = () => {
         state.screenShake = 10; // Shake on dmg
         state.enemies.splice(i, 1);
         addParticles(enemy.x, enemy.y, '#ff0000', 10);
+        // Reset Combo on life loss
+        state.combo = 0;
+        state.comboTimer = 0;
+        
         if (state.lives <= 0) setPhase(GamePhase.GAME_OVER);
         continue;
       }
@@ -413,6 +455,10 @@ const App: React.FC = () => {
            state.screenShake = 10; // Shake on dmg
            state.enemies.splice(i, 1);
            addParticles(enemy.x, enemy.y, '#ff0000', 10);
+           // Reset Combo on life loss
+           state.combo = 0;
+           state.comboTimer = 0;
+           
            if (state.lives <= 0) setPhase(GamePhase.GAME_OVER);
         }
       } else {
@@ -435,7 +481,10 @@ const App: React.FC = () => {
 
         const target = state.enemies.find(e => getDistance(tower, e) <= (statRange + modifiers.rangeAdd));
         if (target) {
-          let dmg = statDmg * modifiers.damageMul;
+          // Damage Calculation with Combo
+          let comboMult = 1 + (state.combo * COMBO_DAMAGE_SCALING);
+          let dmg = statDmg * modifiers.damageMul * comboMult;
+          
           if (tower.type === TowerType.SNIPER) dmg *= modifiers.sniperMul;
 
           // Critical Hit Logic (Phase 2)
@@ -502,7 +551,6 @@ const App: React.FC = () => {
   };
 
   const addFloatingText = (x: number, y: number, text: string, color: string, size: number = 1) => {
-    // 确保在 phase change 时也能添加 (use current ref directly in case)
     gameStateRef.current.floatingTexts.push({
         id: Math.random().toString(),
         x, y, text, color, size,
@@ -516,7 +564,7 @@ const App: React.FC = () => {
       // Visual: Flash White
       e.hitFlash = 5;
 
-      // Artifact: Greed (Phase 2)
+      // Artifact: Greed
       if (modifiers.goldOnHitChance > 0 && Math.random() < modifiers.goldOnHitChance) {
           state.money += 2;
           addFloatingText(e.x, e.y - 0.5, "+$2", '#fbbf24', 0.8);
@@ -524,7 +572,7 @@ const App: React.FC = () => {
 
       let damageDealt = proj.damage;
       
-      // Artifact: Executioner (Phase 2)
+      // Artifact: Executioner
       if (modifiers.executeThreshold > 0 && (e.hp / e.maxHp) < modifiers.executeThreshold && e.type !== 'BOSS') {
           damageDealt = e.hp + 10; // Ensure kill
           addFloatingText(e.x, e.y, "斩杀!", '#ef4444', 1.5);
@@ -549,21 +597,7 @@ const App: React.FC = () => {
         const idx = state.enemies.findIndex(en => en.id === e.id);
         if (idx !== -1) {
           state.enemies.splice(idx, 1);
-          state.money += (e.type === 'BOSS' ? 50 : e.type === 'TANK' ? 10 : e.type === 'SWARM' ? 2 : 5);
-          state.score += 10;
-          addParticles(e.x, e.y, '#fbbf24', 5);
-
-          // Artifact: Corpse Explosion (Phase 2)
-          if (modifiers.explodeOnDeath > 0) {
-              addParticles(e.x, e.y, '#ef4444', 10);
-              state.screenShake = 3;
-              state.enemies.forEach(other => {
-                  if (getDistance(e, other) < 1.5) {
-                      other.hp -= modifiers.explodeOnDeath;
-                      addFloatingText(other.x, other.y, modifiers.explodeOnDeath.toString(), '#ef4444');
-                  }
-              });
-          }
+          handleEnemyDeath(e, state);
         }
       }
     };
@@ -572,7 +606,7 @@ const App: React.FC = () => {
       const impactX = target ? target.x : proj.x;
       const impactY = target ? target.y : proj.y;
       addParticles(impactX, impactY, proj.color, 8);
-      state.screenShake = 2; // Small shake on explosion
+      state.screenShake = 2; 
 
       state.enemies.forEach(e => {
         if (getDistance({x: impactX, y: impactY}, e) <= (proj.splashRadius || 0)) {
@@ -583,6 +617,60 @@ const App: React.FC = () => {
       hitEffect(target);
       addParticles(target.x, target.y, proj.color, 3);
     }
+  };
+
+  const handleEnemyDeath = (e: Enemy, state: GameState) => {
+     // Base reward
+     state.money += (e.type === 'BOSS' ? 50 : e.type === 'TANK' ? 10 : e.type === 'SWARM' ? 2 : 5);
+     state.score += 10;
+     addParticles(e.x, e.y, '#fbbf24', 5);
+     
+     // --- Combo & Energy System ---
+     state.combo += 1;
+     state.comboTimer = COMBO_TIMEOUT;
+     state.energy = Math.min(MAX_ENERGY, state.energy + ENERGY_PER_KILL);
+
+     // Special Text at thresholds
+     if (state.combo % 10 === 0) {
+         addFloatingText(e.x, e.y - 1, `${state.combo} COMBO!`, '#f472b6', 1.2);
+     }
+     
+     // Artifact: Corpse Explosion
+     if (modifiers.explodeOnDeath > 0) {
+        addParticles(e.x, e.y, '#ef4444', 10);
+        state.screenShake = 3;
+        state.enemies.forEach(other => {
+            if (getDistance(e, other) < 1.5) {
+                other.hp -= modifiers.explodeOnDeath;
+                addFloatingText(other.x, other.y, modifiers.explodeOnDeath.toString(), '#ef4444');
+            }
+        });
+     }
+  };
+
+  // 大招逻辑
+  const handleOrbitalStrike = () => {
+      const state = gameStateRef.current;
+      if (state.energy < MAX_ENERGY) return;
+      
+      // Consume Energy
+      state.energy = 0;
+      // Visuals
+      state.screenShake = 20; // Massive Shake
+      state.orbitalStrikeTick = 30; // Animation lasts 0.5s
+      
+      // Damage Logic
+      state.enemies.forEach(e => {
+          e.hp -= ORBITAL_STRIKE_DAMAGE;
+          e.hitFlash = 20;
+          addFloatingText(e.x, e.y, ORBITAL_STRIKE_DAMAGE.toString(), '#ef4444', 2.0);
+          addParticles(e.x, e.y, '#ef4444', 15);
+      });
+
+      // Cleanup dead enemies
+      const dead = state.enemies.filter(e => e.hp <= 0);
+      dead.forEach(e => handleEnemyDeath(e, state));
+      state.enemies = state.enemies.filter(e => e.hp > 0);
   };
 
   const addParticles = (x: number, y: number, color: string, count: number) => {
@@ -668,6 +756,9 @@ const App: React.FC = () => {
     state.enemies = [];
     state.floatingTexts = []; // 清除旧的文字
     state.particles = []; // 清除旧的粒子
+    state.combo = 0;
+    state.comboTimer = 0;
+    // 保留能量
 
     // 2. 自动出售当前地图所有塔
     state.grid.forEach((row, y) => {
@@ -726,6 +817,18 @@ const App: React.FC = () => {
     setSelectedPlacedTower(null);
   };
 
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(e => {
+        console.error(`Error attempting to enable fullscreen: ${e.message}`);
+      });
+    } else {
+      if (document.exitFullscreen) {
+        document.exitFullscreen();
+      }
+    }
+  };
+
 
   // --- 渲染 ---
 
@@ -764,7 +867,7 @@ const App: React.FC = () => {
         ctx.fillRect(rectX, rectY, rectW, rectH);
     }
     
-    // 绘制障碍物 (Phase 2 Change)
+    // 绘制障碍物
     ctx.fillStyle = '#4b5563'; // Gray-600
     state.obstacles.forEach(o => {
         const ox = o.x * scaleX;
@@ -847,7 +950,25 @@ const App: React.FC = () => {
       ctx.globalAlpha = 1.0;
     });
 
-    // 6. Floating Text (Phase 1)
+    // --- Draw Orbital Strike Effect ---
+    if (state.orbitalStrikeTick > 0) {
+        const alpha = state.orbitalStrikeTick / 30;
+        ctx.save();
+        // 1. Big Flash
+        ctx.fillStyle = `rgba(255, 255, 255, ${alpha * 0.8})`;
+        ctx.fillRect(0, 0, width, height);
+        
+        // 2. Vertical Beams (Random)
+        ctx.fillStyle = `rgba(239, 68, 68, ${alpha})`;
+        for(let i=0; i<10; i++) {
+            const bx = Math.random() * width;
+            const bw = Math.random() * 50 + 20;
+            ctx.fillRect(bx, 0, bw, height);
+        }
+        ctx.restore();
+    }
+
+    // 6. Floating Text
     state.floatingTexts.forEach(ft => {
         const px = (ft.x + 0.5) * scaleX;
         const py = (ft.y + 0.5) * scaleY;
@@ -953,6 +1074,63 @@ const App: React.FC = () => {
 
   // --- 交互 ---
 
+  const getGameCoordinates = (clientX: number, clientY: number, rect: DOMRect) => {
+      if (isPortrait) {
+          // 竖屏模式下，屏幕旋转90度
+          // 屏幕的Y轴对应游戏的X轴
+          // 屏幕的X轴对应游戏的Y轴 (反向)
+          
+          // 逻辑推导：
+          // 视觉上游戏的左上角 (0,0) 位于物理屏幕的右上角
+          // 视觉上游戏的右上角 (W,0) 位于物理屏幕的右下角
+          // 视觉上游戏的左下角 (0,H) 位于物理屏幕的左上角
+          
+          // 实际上 transform: translate(-50%, -50%) rotate(90deg) 的行为：
+          // 原始的 (0,0) -> 物理中心 -> 旋转后指向物理右上方向? 
+          // 简易算法：
+          // 点击位置相对于 Canvas 中心的偏移
+          // 设中心为 (Cx, Cy)
+          // dx = clientX - rect.left - rect.width/2
+          // dy = clientY - rect.top - rect.height/2
+          
+          // 旋转 -90度 还原回游戏坐标系
+          // game_dx = dy
+          // game_dy = -dx
+          
+          // 还原回游戏像素坐标
+          // game_x = game_dx + game_width/2
+          // game_y = game_dy + game_height/2
+          
+          const centerX = rect.left + rect.width / 2;
+          const centerY = rect.top + rect.height / 2;
+          
+          const dx = clientX - centerX;
+          const dy = clientY - centerY;
+          
+          // 旋转映射: 屏幕的Y是游戏的X，屏幕的X是游戏的-Y
+          // 注意：rect.width/height 是物理尺寸
+          // 游戏的宽度对应物理的高度(rect.height)
+          // 游戏的高度对应物理的宽度(rect.width)
+          
+          const gameWidth = rect.height; // 因为旋转了
+          const gameHeight = rect.width; 
+          
+          // 归一化坐标 (-0.5 到 0.5)
+          const nx = dy / gameWidth; 
+          const ny = -dx / gameHeight;
+          
+          const x = Math.floor((nx + 0.5) * GRID_W);
+          const y = Math.floor((ny + 0.5) * GRID_H);
+          
+          return { x, y };
+      } else {
+          // 标准横屏
+          const x = Math.floor((clientX - rect.left) / (rect.width / GRID_W));
+          const y = Math.floor((clientY - rect.top) / (rect.height / GRID_H));
+          return { x, y };
+      }
+  };
+
   const handleCanvasClick = (e: React.MouseEvent | React.TouchEvent) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -968,8 +1146,7 @@ const App: React.FC = () => {
       clientY = (e as React.MouseEvent).clientY;
     }
     
-    const x = Math.floor((clientX - rect.left) / (rect.width / GRID_W));
-    const y = Math.floor((clientY - rect.top) / (rect.height / GRID_H));
+    const { x, y } = getGameCoordinates(clientX, clientY, rect);
     
     // 如果点击了UI区域，直接忽略
     if (y >= PLAYABLE_H) {
@@ -977,6 +1154,9 @@ const App: React.FC = () => {
         setSelectedTowerType(null);
         return;
     }
+    
+    // 边界检查
+    if (x < 0 || x >= GRID_W || y < 0 || y >= GRID_H) return;
 
     const clickedTower = gameStateRef.current.grid[y][x];
 
@@ -1013,8 +1193,7 @@ const App: React.FC = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
-    const x = Math.floor((e.clientX - rect.left) / (rect.width / GRID_W));
-    const y = Math.floor((e.clientY - rect.top) / (rect.height / GRID_H));
+    const { x, y } = getGameCoordinates(e.clientX, e.clientY, rect);
     hoverPos.current = { x, y };
   };
 
@@ -1022,10 +1201,28 @@ const App: React.FC = () => {
      getWaveFlavorText(1).then(setFlavorText);
   }, []);
 
+  // 动态计算容器样式
+  const containerStyle: React.CSSProperties = isPortrait ? {
+      width: '100vh',
+      height: '100vw',
+      transform: 'translate(-50%, -50%) rotate(90deg)',
+      position: 'absolute',
+      top: '50%',
+      left: '50%',
+      transformOrigin: 'center center',
+  } : {
+      width: '100%',
+      maxWidth: '1200px',
+      aspectRatio: '16/9',
+      position: 'relative',
+  };
+
   return (
     <div className="w-full h-screen bg-gray-950 flex items-center justify-center overflow-hidden relative select-none">
-      <div className="relative w-full max-w-[1200px] aspect-video bg-black shadow-2xl border-2 md:border-4 border-gray-800 rounded-lg overflow-hidden">
-        
+      <div 
+        className="bg-black shadow-2xl border-2 md:border-4 border-gray-800 rounded-lg overflow-hidden transition-all duration-500"
+        style={containerStyle}
+      >
         <canvas
           ref={canvasRef}
           width={GRID_W * CELL_SIZE}
@@ -1046,6 +1243,8 @@ const App: React.FC = () => {
           onSellTower={handleSellTower}
           onNextWave={startNextWave}
           onNextStage={startNextStage}
+          onOrbitalStrike={handleOrbitalStrike}
+          onToggleFullscreen={toggleFullscreen}
           flavorText={flavorText}
         />
 
@@ -1073,12 +1272,6 @@ const App: React.FC = () => {
             </button>
           </div>
         )}
-      </div>
-
-      <div className="md:hidden fixed top-0 left-0 w-full h-full bg-black z-50 flex flex-col items-center justify-center text-white p-4 pointer-events-none opacity-0 portrait:opacity-100 portrait:pointer-events-auto transition-opacity duration-500">
-        <div className="text-6xl mb-4 animate-spin-slow">⟳</div>
-        <div className="text-center text-lg font-bold">请旋转手机</div>
-        <div className="text-center text-gray-400 text-sm mt-2">横屏模式体验最佳</div>
       </div>
     </div>
   );
