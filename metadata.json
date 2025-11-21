@@ -1,0 +1,5 @@
+{
+  "name": "PixelRogueDefense",
+  "description": "A pixel-art style Tower Defense game with Roguelike progression and Endless mode. Features mobile-optimized landscape gameplay.",
+  "requestFramePermissions": []
+}
